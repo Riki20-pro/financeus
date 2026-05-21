@@ -375,15 +375,28 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="p-0">
               <Table>
+                <TableHeader className="bg-slate-800/50">
+                  <TableRow className="border-slate-800 hover:bg-transparent">
+                    <TableHead className="text-slate-400">Tanggal</TableHead>
+                    <TableHead className="text-slate-400">Keterangan</TableHead>
+                    <TableHead className="text-slate-400">Kategori</TableHead>
+                    <TableHead className="text-right text-slate-400">
+                      Jumlah
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
                 <TableBody>
                   {transactions.map((t) => (
                     <TableRow key={t.id} className="border-slate-800">
-                      <TableCell>
+                      <TableCell className="text-slate-200">
                         {new Date(t.tanggal).toLocaleDateString("id-ID")}
                       </TableCell>
-                      <TableCell>{t.nama}</TableCell>
+                      <TableCell className="text-slate-200">{t.nama}</TableCell>
+                      <TableCell className="text-slate-400 text-sm">
+                        {t.kategori}
+                      </TableCell>
                       <TableCell
-                        className={`text-right ${t.tipe === "masuk" ? "text-emerald-400" : "text-rose-400"}`}
+                        className={`text-right font-medium ${t.tipe === "masuk" ? "text-emerald-400" : "text-rose-400"}`}
                       >
                         {t.tipe === "masuk" ? "+" : "-"}
                         {new Intl.NumberFormat("id-ID", {
