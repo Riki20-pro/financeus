@@ -128,3 +128,8 @@
     @apply font-sans;
   }
 }
+
+/* Mengatasi masalah Select crash di mobile */
+[data-radix-popper-content-wrapper] {
+  z-index: 9999 !important;
+}

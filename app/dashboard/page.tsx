@@ -416,7 +416,6 @@ export default function DashboardPage() {
                     <Select
                       value={tipe}
                       onValueChange={(val: any) => setTipe(val)}
-                      modal={false} // <--- Tambahkan baris ini
                     >
                       <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
                         <SelectValue placeholder="Pilih Tipe" />
@@ -498,7 +497,6 @@ export default function DashboardPage() {
                 <Select
                   value={filterType}
                   onValueChange={(val: any) => setFilterType(val)}
-                  modal={false} // <--- Tambahkan juga di sini
                 >
                   <SelectTrigger className="w-[140px] bg-slate-800 border-slate-700 text-white text-xs h-9">
                     <Filter className="h-3 w-3 mr-2" />
