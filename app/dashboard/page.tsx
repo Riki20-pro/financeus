@@ -146,6 +146,7 @@ export default function DashboardPage() {
         !dropdownUsers.some((u) => u.email === currentUser.email)
       ) {
         dropdownUsers.push({
+          id: currentUser.id, // <--- TAMBAHKAN INI (Wajib ada)
           email: currentUser.email,
           nama:
             currentUser.user_metadata?.nama ||
