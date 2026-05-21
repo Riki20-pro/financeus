@@ -47,28 +47,10 @@ interface Transaction {
 }
 
 interface UserProfile {
+  id: string;
   email: string;
   nama: string;
 }
-
-// Daftar user resmi dari Supabase Auth kamu
-const REGISTERED_USERS = [
-  {
-    id: "0c7e7a56-6f94-48b7-97c2-99fc229de164",
-    email: "riki@gmail.com",
-    nama: "Riki",
-  },
-  {
-    id: "0410a1f4-e0fd-49ea-a554-0067f635556d",
-    email: "joni@gmail.com",
-    nama: "Joni",
-  },
-  {
-    id: "d22638db-3109-48cc-abb8-c5ac4eb1071a",
-    email: "anton@gmail.com",
-    nama: "Anton",
-  },
-];
 
 export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -80,7 +62,6 @@ export default function DashboardPage() {
     null,
   );
 
-  // Form states
   const [nama, setNama] = useState("");
   const [jumlah, setJumlah] = useState("");
   const [tipe, setTipe] = useState<"masuk" | "keluar">("masuk");
@@ -89,7 +70,6 @@ export default function DashboardPage() {
     new Date().toISOString().split("T")[0],
   );
 
-  // Filter states
   const [filterType, setFilterType] = useState<
     "all" | "today" | "yesterday" | "manual"
   >("all");
@@ -103,9 +83,8 @@ export default function DashboardPage() {
     const getUser = async () => {
       const { data } = await supabase.auth.getSession();
       if (data.session) {
-        const user = data.session.user;
-        setCurrentUser(user);
-        setSelectedUserEmail(user.email || null);
+        setCurrentUser(data.session.user);
+        setSelectedUserEmail(data.session.user.email || null);
       } else {
         window.location.href = "/login";
       }
@@ -113,106 +92,85 @@ export default function DashboardPage() {
     getUser();
   }, []);
 
+  // PERBAIKAN: Mengambil data user dari database (tabel profiles)
   useEffect(() => {
     if (!currentUser) return;
 
-    fetchTransactions();
+    const fetchAllUsers = async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, email, nama");
+      if (data) {
+        const isMeInList = data.some((u) => u.email === currentUser.email);
+        let usersList = [...data];
+        if (!isMeInList) {
+          usersList.push({
+            id: currentUser.id,
+            email: currentUser.email || "",
+            nama:
+              currentUser.user_metadata?.nama ||
+              currentUser.email?.split("@")[0] ||
+              "Saya",
+          });
+        }
+        setAllUsers(usersList);
+      }
+    };
+    fetchAllUsers();
+  }, [currentUser]);
 
+  useEffect(() => {
+    if (!currentUser) return;
+    fetchTransactions();
     const channel = supabase
       .channel("transactions_realtime_global")
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "transactions",
-        },
-        () => {
-          fetchTransactions();
-        },
+        { event: "*", schema: "public", table: "transactions" },
+        () => fetchTransactions(),
       )
       .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
     };
   }, [currentUser, selectedUserEmail, filterType, manualDate]);
 
-  useEffect(() => {
-    if (currentUser) {
-      const dropdownUsers = [...REGISTERED_USERS];
-      if (
-        currentUser.email &&
-        !dropdownUsers.some((u) => u.email === currentUser.email)
-      ) {
-        dropdownUsers.push({
-          id: currentUser.id, // <--- TAMBAHKAN INI (Wajib ada)
-          email: currentUser.email,
-          nama:
-            currentUser.user_metadata?.nama ||
-            currentUser.email.split("@")[0] ||
-            "My Account",
-        });
-      }
-      setAllUsers(dropdownUsers);
-    }
-  }, [currentUser]);
-
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-
-      // 1. Ambil semua data transaksi dari tabel
       let query = supabase
         .from("transactions")
         .select("*")
         .order("tanggal", { ascending: false });
-
       const { data, error } = await query;
-
-      if (error) {
-        console.error(
-          "Error fetching transactions:",
-          JSON.stringify(error, null, 2),
-        );
-        return;
-      }
+      if (error) return;
 
       let filteredData = data || [];
 
-      // 2. Filter berdasarkan user yang dipilih di dropdown dashboard
       if (selectedUserEmail) {
-        // Cari ID user berdasarkan email yang sedang aktif di dropdown
-        const targetUser = REGISTERED_USERS.find(
-          (u) => u.email === selectedUserEmail,
-        );
-
+        const targetUser = allUsers.find((u) => u.email === selectedUserEmail);
         if (targetUser) {
-          // Filter data transaksi yang memiliki user_id cocok dengan user tersebut
           filteredData = filteredData.filter(
             (t) => t.user_id === targetUser.id,
           );
         }
       }
 
-      // 3. Filter berdasarkan waktu (Hari Ini / Kemarin / Manual)
       const today = new Date().toISOString().split("T")[0];
       const yesterday = new Date(Date.now() - 86400000)
         .toISOString()
         .split("T")[0];
 
-      if (filterType === "today") {
+      if (filterType === "today")
         filteredData = filteredData.filter((t) => t.tanggal === today);
-      } else if (filterType === "yesterday") {
+      else if (filterType === "yesterday")
         filteredData = filteredData.filter((t) => t.tanggal === yesterday);
-      } else if (filterType === "manual" && manualDate) {
+      else if (filterType === "manual" && manualDate)
         filteredData = filteredData.filter((t) => t.tanggal === manualDate);
-      }
 
-      // 4. Set data ke state transaksi
       setTransactions(filteredData);
     } catch (err) {
-      console.error("Unexpected error:", err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -221,7 +179,6 @@ export default function DashboardPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !isViewingOwnDashboard) return;
-
     const transactionData = {
       nama,
       jumlah: parseFloat(jumlah),
@@ -232,34 +189,24 @@ export default function DashboardPage() {
     };
 
     if (editingId) {
-      const { error } = await supabase
+      await supabase
         .from("transactions")
         .update(transactionData)
-        .eq("id", editingId)
-        .eq("user_id", currentUser.id);
-      if (error) alert(error.message);
+        .eq("id", editingId);
       setEditingId(null);
     } else {
-      const { error } = await supabase
-        .from("transactions")
-        .insert([transactionData]);
-      if (error) alert(error.message);
+      await supabase.from("transactions").insert([transactionData]);
     }
-
-    // RESET FORM
     setNama("");
     setJumlah("");
     setKategori("");
     setTanggal(new Date().toISOString().split("T")[0]);
-
-    // TAMBAHKAN BARIS INI:
-    // Memaksa aplikasi untuk menarik ulang data setelah simpan/edit berhasil
     await fetchTransactions();
   };
 
   const handleEdit = (t: Transaction) => {
     if (t.user_id !== currentUser?.id) {
-      alert("Anda tidak memiliki izin untuk mengedit transaksi user lain.");
+      alert("Tidak bisa edit transaksi orang lain.");
       return;
     }
     setEditingId(t.id);
@@ -272,16 +219,12 @@ export default function DashboardPage() {
 
   const handleDelete = async (id: string, ownerId: string) => {
     if (ownerId !== currentUser?.id) {
-      alert("Anda tidak memiliki izin untuk menghapus transaksi user lain.");
+      alert("Tidak bisa hapus transaksi orang lain.");
       return;
     }
-    if (confirm("Are you sure?")) {
-      const { error } = await supabase
-        .from("transactions")
-        .delete()
-        .eq("id", id)
-        .eq("user_id", currentUser.id);
-      if (error) alert(error.message);
+    if (confirm("Yakin hapus?")) {
+      await supabase.from("transactions").delete().eq("id", id);
+      await fetchTransactions();
     }
   };
 
@@ -305,11 +248,6 @@ export default function DashboardPage() {
       </div>
     );
 
-  const currentUserDisplayName =
-    currentUser.user_metadata?.nama ||
-    currentUser.email?.split("@")[0] ||
-    "My Account";
-
   return (
     <div className="min-h-screen bg-slate-950 p-4 md:p-8 text-slate-50">
       <div className="mx-auto max-w-6xl space-y-8">
@@ -325,7 +263,8 @@ export default function DashboardPage() {
             <div className="hidden sm:flex flex-col items-end">
               <span className="text-xs text-slate-400">Aktif sebagai</span>
               <span className="text-sm font-medium text-indigo-300">
-                {currentUserDisplayName}
+                {currentUser.user_metadata?.nama ||
+                  currentUser.email?.split("@")[0]}
               </span>
             </div>
             <Select
@@ -357,22 +296,21 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Summary Cards */}
         <div className="grid gap-4 md:grid-cols-3">
           <SummaryCard
-            title={`Sisa Uang (${isViewingOwnDashboard ? "Saya" : allUsers.find((u) => u.email === selectedUserEmail)?.nama || "User"})`}
+            title="Sisa Uang"
             amount={sisaUang}
             icon={<Wallet className="h-5 w-5 text-indigo-400" />}
             className="border-indigo-500/20 bg-indigo-500/5"
           />
           <SummaryCard
-            title={`Uang Masuk (${isViewingOwnDashboard ? "Saya" : allUsers.find((u) => u.email === selectedUserEmail)?.nama || "User"})`}
+            title="Uang Masuk"
             amount={totalMasuk}
             icon={<TrendingUp className="h-5 w-5 text-emerald-400" />}
             className="border-emerald-500/20 bg-emerald-500/5"
           />
           <SummaryCard
-            title={`Uang Keluar (${isViewingOwnDashboard ? "Saya" : allUsers.find((u) => u.email === selectedUserEmail)?.nama || "User"})`}
+            title="Uang Keluar"
             amount={totalKeluar}
             icon={<TrendingDown className="h-5 w-5 text-rose-400" />}
             className="border-rose-500/20 bg-rose-500/5"
@@ -380,7 +318,6 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-8 lg:grid-cols-12">
-          {/* Form Section */}
           {isViewingOwnDashboard ? (
             <Card className="lg:col-span-4 bg-slate-900 border-slate-800">
               <CardHeader>
@@ -397,7 +334,6 @@ export default function DashboardPage() {
                       value={nama}
                       onChange={(e) => setNama(e.target.value)}
                       className="bg-slate-800 border-slate-700 text-white"
-                      placeholder="Contoh: Gaji Bulanan"
                     />
                   </div>
                   <div className="space-y-2">
@@ -408,7 +344,6 @@ export default function DashboardPage() {
                       value={jumlah}
                       onChange={(e) => setJumlah(e.target.value)}
                       className="bg-slate-800 border-slate-700 text-white"
-                      placeholder="0"
                     />
                   </div>
                   <div className="space-y-2">
@@ -418,7 +353,7 @@ export default function DashboardPage() {
                       onValueChange={(val: any) => setTipe(val)}
                     >
                       <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
-                        <SelectValue placeholder="Pilih Tipe" />
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-slate-800 border-slate-700 text-white">
                         <SelectItem value="masuk">Uang Masuk</SelectItem>
@@ -433,7 +368,6 @@ export default function DashboardPage() {
                       value={kategori}
                       onChange={(e) => setKategori(e.target.value)}
                       className="bg-slate-800 border-slate-700 text-white"
-                      placeholder="Contoh: Makanan, Transportasi"
                     />
                   </div>
                   <div className="space-y-2">
@@ -452,169 +386,72 @@ export default function DashboardPage() {
                   >
                     {editingId ? "Update" : "Simpan"}
                   </Button>
-                  {editingId && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="w-full text-slate-400"
-                      onClick={() => {
-                        setEditingId(null);
-                        setNama("");
-                        setJumlah("");
-                        setKategori("");
-                        setTanggal(new Date().toISOString().split("T")[0]);
-                      }}
-                    >
-                      Batal
-                    </Button>
-                  )}
                 </form>
               </CardContent>
             </Card>
           ) : (
             <Card className="lg:col-span-4 bg-slate-900 border-slate-800 flex items-center justify-center p-8 text-center">
-              <div className="space-y-4">
-                <Users className="h-12 w-12 text-slate-700 mx-auto" />
-                <p className="text-slate-400 text-sm">
-                  Anda sedang melihat dashboard{" "}
-                  <strong>
-                    {allUsers.find((u) => u.email === selectedUserEmail)
-                      ?.nama || "User"}
-                  </strong>
-                  . Fitur CRUD hanya tersedia di dashboard Anda sendiri.
-                </p>
-              </div>
+              <p className="text-slate-400 text-sm">
+                Fitur CRUD hanya tersedia di dashboard sendiri.
+              </p>
             </Card>
           )}
 
-          {/* Table Section */}
           <Card className="lg:col-span-8 bg-slate-900 border-slate-800 overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <CardHeader className="flex flex-row items-center justify-between pb-4">
               <CardTitle className="text-xl text-white">
                 Riwayat Transaksi
               </CardTitle>
-              <div className="flex items-center gap-2">
-                <Select
-                  value={filterType}
-                  onValueChange={(val: any) => setFilterType(val)}
-                >
-                  <SelectTrigger className="w-[140px] bg-slate-800 border-slate-700 text-white text-xs h-9">
-                    <Filter className="h-3 w-3 mr-2" />
-                    <SelectValue placeholder="Filter Waktu" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700 text-white">
-                    <SelectItem value="all">Semua Waktu</SelectItem>
-                    <SelectItem value="today">Hari Ini</SelectItem>
-                    <SelectItem value="yesterday">Kemarin</SelectItem>
-                    <SelectItem value="manual">Manual...</SelectItem>
-                  </SelectContent>
-                </Select>
-                {filterType === "manual" && (
-                  <Input
-                    type="date"
-                    value={manualDate}
-                    onChange={(e) => setManualDate(e.target.value)}
-                    className="w-[140px] bg-slate-800 border-slate-700 text-white text-xs h-9"
-                  />
-                )}
-              </div>
+              <Select
+                value={filterType}
+                onValueChange={(val: any) => setFilterType(val)}
+              >
+                <SelectTrigger className="w-[140px] bg-slate-800 border-slate-700 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                  <SelectItem value="all">Semua</SelectItem>
+                  <SelectItem value="today">Hari Ini</SelectItem>
+                  <SelectItem value="yesterday">Kemarin</SelectItem>
+                </SelectContent>
+              </Select>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader className="bg-slate-800/50">
-                    <TableRow className="border-slate-800 hover:bg-transparent">
-                      <TableHead className="text-slate-400">Tanggal</TableHead>
-                      <TableHead className="text-slate-400">Oleh</TableHead>
-                      <TableHead className="text-slate-400">Nama</TableHead>
-                      <TableHead className="text-slate-400">Kategori</TableHead>
-                      <TableHead className="text-right text-slate-400">
-                        Jumlah
-                      </TableHead>
-                      {isViewingOwnDashboard && (
-                        <TableHead className="text-right text-slate-400">
-                          Aksi
-                        </TableHead>
-                      )}
+              <Table>
+                <TableHeader className="bg-slate-800/50">
+                  <TableRow className="border-slate-800">
+                    <TableHead className="text-slate-400">Tanggal</TableHead>
+                    <TableHead className="text-slate-400">Oleh</TableHead>
+                    <TableHead className="text-slate-400">Nama</TableHead>
+                    <TableHead className="text-right text-slate-400">
+                      Jumlah
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transactions.map((t) => (
+                    <TableRow key={t.id} className="border-slate-800">
+                      <TableCell>
+                        {new Date(t.tanggal).toLocaleDateString("id-ID")}
+                      </TableCell>
+                      <TableCell>
+                        {allUsers.find((u) => u.id === t.user_id)?.nama ||
+                          "User"}
+                      </TableCell>
+                      <TableCell>{t.nama}</TableCell>
+                      <TableCell
+                        className={`text-right ${t.tipe === "masuk" ? "text-emerald-400" : "text-rose-400"}`}
+                      >
+                        {t.tipe === "masuk" ? "+" : "-"}
+                        {new Intl.NumberFormat("id-ID", {
+                          style: "currency",
+                          currency: "IDR",
+                        }).format(t.jumlah)}
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <AnimatePresence mode="popLayout">
-                      {transactions.map((t) => (
-                        <motion.tr
-                          key={t.id}
-                          layout
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          className="border-slate-800 hover:bg-slate-800/30 transition-colors"
-                        >
-                          <TableCell className="text-slate-300">
-                            {new Date(t.tanggal).toLocaleDateString("id-ID")}
-                          </TableCell>
-                          <TableCell className="text-xs text-slate-400">
-                            {t.user_email === currentUser?.email
-                              ? "Saya"
-                              : allUsers.find((u) => u.email === t.user_email)
-                                  ?.nama ||
-                                t.user_email?.split("@")[0] ||
-                                "User Lain"}
-                          </TableCell>
-                          <TableCell className="font-medium text-white">
-                            {t.nama}
-                          </TableCell>
-                          <TableCell>
-                            <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-xs font-medium text-slate-300">
-                              {t.kategori}
-                            </span>
-                          </TableCell>
-                          <TableCell
-                            className={`text-right font-bold ${t.tipe === "masuk" ? "text-emerald-400" : "text-rose-400"}`}
-                          >
-                            {t.tipe === "masuk" ? "+" : "-"}
-                            {new Intl.NumberFormat("id-ID", {
-                              style: "currency",
-                              currency: "IDR",
-                            }).format(t.jumlah)}
-                          </TableCell>
-                          {isViewingOwnDashboard && (
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleEdit(t)}
-                                  className="h-8 w-8 text-slate-400 hover:text-indigo-400"
-                                >
-                                  <Edit2 className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleDelete(t.id, t.user_id)}
-                                  className="h-8 w-8 text-slate-400 hover:text-rose-400"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          )}
-                        </motion.tr>
-                      ))}
-                    </AnimatePresence>
-                    {!loading && transactions.length === 0 && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={isViewingOwnDashboard ? 6 : 5}
-                          className="h-32 text-center text-slate-500"
-                        >
-                          Belum ada transaksi untuk user ini.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </div>
@@ -623,23 +460,13 @@ export default function DashboardPage() {
   );
 }
 
-function SummaryCard({
-  title,
-  amount,
-  icon,
-  className,
-}: {
-  title: string;
-  amount: number;
-  icon: React.ReactNode;
-  className?: string;
-}) {
+function SummaryCard({ title, amount, icon, className }: any) {
   return (
     <Card className={`bg-slate-900 border-slate-800 ${className}`}>
       <CardContent className="p-6">
         <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-slate-400">{title}</p>
+          <div>
+            <p className="text-sm text-slate-400">{title}</p>
             <p className="text-2xl font-bold text-white">
               {new Intl.NumberFormat("id-ID", {
                 style: "currency",
@@ -647,7 +474,7 @@ function SummaryCard({
               }).format(amount)}
             </p>
           </div>
-          <div className="rounded-full p-2 bg-slate-950/50">{icon}</div>
+          {icon}
         </div>
       </CardContent>
     </Card>
