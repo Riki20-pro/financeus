@@ -70,10 +70,13 @@ export default function DashboardPage() {
     new Date().toISOString().split("T")[0],
   );
 
+  // Perbaikan: Ganti filter 'manual' jadi 'custom' dan tambah state customDate
   const [filterType, setFilterType] = useState<
-    "all" | "today" | "yesterday" | "manual"
+    "all" | "today" | "yesterday" | "custom"
   >("all");
-  const [manualDate, setManualDate] = useState("");
+  const [customDate, setCustomDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
 
   const isViewingOwnDashboard = useMemo(() => {
     return selectedUserEmail === (currentUser?.email || null);
@@ -92,10 +95,8 @@ export default function DashboardPage() {
     getUser();
   }, []);
 
-  // PERBAIKAN: Mengambil data user dari database (tabel profiles)
   useEffect(() => {
     if (!currentUser) return;
-
     const fetchAllUsers = async () => {
       const { data } = await supabase
         .from("profiles")
@@ -133,7 +134,7 @@ export default function DashboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUser, selectedUserEmail, filterType, manualDate]);
+  }, [currentUser, selectedUserEmail, filterType, customDate]);
 
   const fetchTransactions = async () => {
     try {
@@ -165,8 +166,8 @@ export default function DashboardPage() {
         filteredData = filteredData.filter((t) => t.tanggal === today);
       else if (filterType === "yesterday")
         filteredData = filteredData.filter((t) => t.tanggal === yesterday);
-      else if (filterType === "manual" && manualDate)
-        filteredData = filteredData.filter((t) => t.tanggal === manualDate);
+      else if (filterType === "custom")
+        filteredData = filteredData.filter((t) => t.tanggal === customDate);
 
       setTransactions(filteredData);
     } catch (err) {
@@ -204,30 +205,6 @@ export default function DashboardPage() {
     await fetchTransactions();
   };
 
-  const handleEdit = (t: Transaction) => {
-    if (t.user_id !== currentUser?.id) {
-      alert("Tidak bisa edit transaksi orang lain.");
-      return;
-    }
-    setEditingId(t.id);
-    setNama(t.nama);
-    setJumlah(t.jumlah.toString());
-    setTipe(t.tipe);
-    setKategori(t.kategori);
-    setTanggal(t.tanggal);
-  };
-
-  const handleDelete = async (id: string, ownerId: string) => {
-    if (ownerId !== currentUser?.id) {
-      alert("Tidak bisa hapus transaksi orang lain.");
-      return;
-    }
-    if (confirm("Yakin hapus?")) {
-      await supabase.from("transactions").delete().eq("id", id);
-      await fetchTransactions();
-    }
-  };
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     window.location.href = "/login";
@@ -260,20 +237,13 @@ export default function DashboardPage() {
             Finance<span className="text-indigo-500">us</span>
           </motion.h1>
           <div className="flex items-center gap-4">
-            <div className="hidden sm:flex flex-col items-end">
-              <span className="text-xs text-slate-400">Aktif sebagai</span>
-              <span className="text-sm font-medium text-indigo-300">
-                {currentUser.user_metadata?.nama ||
-                  currentUser.email?.split("@")[0]}
-              </span>
-            </div>
             <Select
               value={selectedUserEmail || ""}
               onValueChange={setSelectedUserEmail}
             >
-              <SelectTrigger className="w-[200px] bg-slate-800 border-slate-700 text-white text-xs h-9">
+              <SelectTrigger className="w-[180px] bg-slate-800 border-slate-700 text-white text-xs h-9">
                 <Users className="h-3 w-3 mr-2" />
-                <SelectValue placeholder="Pilih Dashboard User" />
+                <SelectValue placeholder="Pilih Dashboard" />
               </SelectTrigger>
               <SelectContent className="bg-slate-800 border-slate-700 text-white">
                 {allUsers.map((u) => (
@@ -285,12 +255,7 @@ export default function DashboardPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleLogout}
-              className="text-slate-400 hover:text-white"
-            >
+            <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="h-5 w-5" />
             </Button>
           </div>
@@ -318,7 +283,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-8 lg:grid-cols-12">
-          {isViewingOwnDashboard ? (
+          {isViewingOwnDashboard && (
             <Card className="lg:col-span-4 bg-slate-900 border-slate-800">
               <CardHeader>
                 <CardTitle className="text-xl text-white">
@@ -327,116 +292,94 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label className="text-slate-400">Nama Transaksi</Label>
-                    <Input
-                      required
-                      value={nama}
-                      onChange={(e) => setNama(e.target.value)}
-                      className="bg-slate-800 border-slate-700 text-white"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-400">Jumlah</Label>
-                    <Input
-                      required
-                      type="number"
-                      value={jumlah}
-                      onChange={(e) => setJumlah(e.target.value)}
-                      className="bg-slate-800 border-slate-700 text-white"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-400">Tipe</Label>
-                    <Select
-                      value={tipe}
-                      onValueChange={(val: any) => setTipe(val)}
-                    >
-                      <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-slate-800 border-slate-700 text-white">
-                        <SelectItem value="masuk">Uang Masuk</SelectItem>
-                        <SelectItem value="keluar">Uang Keluar</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-400">Kategori</Label>
-                    <Input
-                      required
-                      value={kategori}
-                      onChange={(e) => setKategori(e.target.value)}
-                      className="bg-slate-800 border-slate-700 text-white"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-slate-400">Tanggal</Label>
-                    <Input
-                      required
-                      type="date"
-                      value={tanggal}
-                      onChange={(e) => setTanggal(e.target.value)}
-                      className="bg-slate-800 border-slate-700 text-white"
-                    />
-                  </div>
-                  <Button
-                    type="submit"
-                    className="w-full bg-indigo-600 hover:bg-indigo-700"
+                  <Input
+                    required
+                    placeholder="Keterangan Masuk/Keluar Uang"
+                    value={nama}
+                    onChange={(e) => setNama(e.target.value)}
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                  <Input
+                    required
+                    type="number"
+                    placeholder="Jumlah Uang"
+                    value={jumlah}
+                    onChange={(e) => setJumlah(e.target.value)}
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                  <Select
+                    value={tipe}
+                    onValueChange={(val: "masuk" | "keluar") => setTipe(val)}
                   >
+                    <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                      <SelectItem value="masuk">Uang Masuk</SelectItem>
+                      <SelectItem value="keluar">Uang Keluar</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    required
+                    placeholder="Kategori Transaksi : Makanan, Transportasi, Gaji, dll"
+                    value={kategori}
+                    onChange={(e) => setKategori(e.target.value)}
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                  <Input
+                    required
+                    type="date"
+                    value={tanggal}
+                    onChange={(e) => setTanggal(e.target.value)}
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                  <Button type="submit" className="w-full bg-indigo-600">
                     {editingId ? "Update" : "Simpan"}
                   </Button>
                 </form>
               </CardContent>
             </Card>
-          ) : (
-            <Card className="lg:col-span-4 bg-slate-900 border-slate-800 flex items-center justify-center p-8 text-center">
-              <p className="text-slate-400 text-sm">
-                Fitur CRUD hanya tersedia di dashboard sendiri.
-              </p>
-            </Card>
           )}
 
-          <Card className="lg:col-span-8 bg-slate-900 border-slate-800 overflow-hidden">
+          <Card
+            className={`${isViewingOwnDashboard ? "lg:col-span-8" : "lg:col-span-12"} bg-slate-900 border-slate-800 overflow-hidden`}
+          >
             <CardHeader className="flex flex-row items-center justify-between pb-4">
               <CardTitle className="text-xl text-white">
                 Riwayat Transaksi
               </CardTitle>
-              <Select
-                value={filterType}
-                onValueChange={(val: any) => setFilterType(val)}
-              >
-                <SelectTrigger className="w-[140px] bg-slate-800 border-slate-700 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-700 text-white">
-                  <SelectItem value="all">Semua</SelectItem>
-                  <SelectItem value="today">Hari Ini</SelectItem>
-                  <SelectItem value="yesterday">Kemarin</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  value={filterType}
+                  onValueChange={(val: any) => setFilterType(val)}
+                >
+                  <SelectTrigger className="w-[120px] bg-slate-800 border-slate-700 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                    <SelectItem value="all">Semua</SelectItem>
+                    <SelectItem value="today">Hari Ini</SelectItem>
+                    <SelectItem value="yesterday">Kemarin</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
+                </Select>
+                {filterType === "custom" && (
+                  <Input
+                    type="date"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                    className="w-[150px] bg-slate-800 border-slate-700 text-white"
+                  />
+                )}
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
-                <TableHeader className="bg-slate-800/50">
-                  <TableRow className="border-slate-800">
-                    <TableHead className="text-slate-400">Tanggal</TableHead>
-                    <TableHead className="text-slate-400">Oleh</TableHead>
-                    <TableHead className="text-slate-400">Nama</TableHead>
-                    <TableHead className="text-right text-slate-400">
-                      Jumlah
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
                 <TableBody>
                   {transactions.map((t) => (
                     <TableRow key={t.id} className="border-slate-800">
                       <TableCell>
                         {new Date(t.tanggal).toLocaleDateString("id-ID")}
-                      </TableCell>
-                      <TableCell>
-                        {allUsers.find((u) => u.id === t.user_id)?.nama ||
-                          "User"}
                       </TableCell>
                       <TableCell>{t.nama}</TableCell>
                       <TableCell
