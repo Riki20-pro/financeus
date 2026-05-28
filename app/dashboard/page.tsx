@@ -146,7 +146,8 @@ export default function DashboardPage() {
   }, [currentUser]);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser?.id) return; // Guard clause for user ID
+    // console.log("Fetching transactions for user:", currentUser.id);
     fetchTransactions();
     const channel = supabase
       .channel("transactions_realtime_global")
@@ -159,28 +160,33 @@ export default function DashboardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUser, selectedUserEmail, filterType, customDate]);
+  }, [currentUser?.id, selectedUserEmail, filterType, customDate]);
 
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      let query = supabase
-        .from("transactions")
-        .select("*")
-        .order("tanggal", { ascending: false });
+      setTransactions([]); // Reset transactions before fetching
+
+      let query = supabase.from("transactions").select("*");
+
+      // Always apply user_id filter based on selectedUserEmail or currentUser.id
+      const targetUser = allUsers.find((u) => u.email === selectedUserEmail);
+      if (targetUser) {
+        query = query.eq("user_id", targetUser.id);
+      } else if (currentUser?.id) {
+        query = query.eq("user_id", currentUser.id);
+      }
+
+      // Sort by 'tanggal' in descending order (newest first)
+      query = query.order("tanggal", { ascending: false });
+
       const { data, error } = await query;
-      if (error) return;
+      if (error) {
+        console.error("Error fetching transactions:", error);
+        return;
+      }
 
       let filteredData = data || [];
-
-      if (selectedUserEmail) {
-        const targetUser = allUsers.find((u) => u.email === selectedUserEmail);
-        if (targetUser) {
-          filteredData = filteredData.filter(
-            (t) => t.user_id === targetUser.id,
-          );
-        }
-      }
 
       const today = new Date().toISOString().split("T")[0];
       const yesterday = new Date(Date.now() - 86400000)
