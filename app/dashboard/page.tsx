@@ -34,6 +34,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Transaction {
   id: string;
@@ -77,6 +95,13 @@ export default function DashboardPage() {
   const [customDate, setCustomDate] = useState(
     new Date().toISOString().split("T")[0],
   );
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [transactionToEdit, setTransactionToEdit] =
+    useState<Transaction | null>(null);
+  const [transactionToDeleteId, setTransactionToDeleteId] = useState<
+    string | null
+  >(null);
 
   const isViewingOwnDashboard = useMemo(() => {
     return selectedUserEmail === (currentUser?.email || null);
@@ -203,6 +228,35 @@ export default function DashboardPage() {
     setKategori("");
     setTanggal(new Date().toISOString().split("T")[0]);
     await fetchTransactions();
+    setIsEditDialogOpen(false);
+  };
+
+  const handleEditClick = (transaction: Transaction) => {
+    setEditingId(transaction.id);
+    setTransactionToEdit(transaction);
+    setNama(transaction.nama);
+    setJumlah(transaction.jumlah.toString());
+    setTipe(transaction.tipe);
+    setKategori(transaction.kategori);
+    setTanggal(transaction.tanggal);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleDeleteClick = (id: string) => {
+    setTransactionToDeleteId(id);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (transactionToDeleteId) {
+      await supabase
+        .from("transactions")
+        .delete()
+        .eq("id", transactionToDeleteId);
+      await fetchTransactions();
+      setIsDeleteDialogOpen(false);
+      setTransactionToDeleteId(null);
+    }
   };
 
   const handleLogout = async () => {
@@ -383,6 +437,11 @@ export default function DashboardPage() {
                     <TableHead className="text-right text-slate-400">
                       Jumlah
                     </TableHead>
+                    {isViewingOwnDashboard && (
+                      <TableHead className="text-right text-slate-400">
+                        Aksi
+                      </TableHead>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -404,6 +463,29 @@ export default function DashboardPage() {
                           currency: "IDR",
                         }).format(t.jumlah)}
                       </TableCell>
+                      {t.user_id === currentUser?.id &&
+                        isViewingOwnDashboard && (
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-amber-500 hover:text-amber-600"
+                                onClick={() => handleEditClick(t)}
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-red-500 hover:text-red-600"
+                                onClick={() => handleDeleteClick(t.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -412,6 +494,94 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
+
+      {/* Edit Transaction Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Edit Transaksi</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Ubah detail transaksi Anda di sini.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              required
+              placeholder="Keterangan Masuk/Keluar Uang"
+              value={nama}
+              onChange={(e) => setNama(e.target.value)}
+              className="bg-slate-800 border-slate-700 text-white"
+            />
+            <Input
+              required
+              type="number"
+              placeholder="Jumlah Uang"
+              value={jumlah}
+              onChange={(e) => setJumlah(e.target.value)}
+              className="bg-slate-800 border-slate-700 text-white"
+            />
+            <Select
+              value={tipe}
+              onValueChange={(val: "masuk" | "keluar") => setTipe(val)}
+            >
+              <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                <SelectItem value="masuk">Uang Masuk</SelectItem>
+                <SelectItem value="keluar">Uang Keluar</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              required
+              placeholder="Kategori Transaksi : Makanan, Transportasi, Gaji, dll"
+              value={kategori}
+              onChange={(e) => setKategori(e.target.value)}
+              className="bg-slate-800 border-slate-700 text-white"
+            />
+            <Input
+              required
+              type="date"
+              value={tanggal}
+              onChange={(e) => setTanggal(e.target.value)}
+              className="bg-slate-800 border-slate-700 text-white"
+            />
+            <Button type="submit" className="w-full bg-indigo-600">
+              Update Transaksi
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
+        <AlertDialogContent className="bg-slate-900 border-slate-800 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl text-red-500">
+              Konfirmasi Hapus
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              Anda yakin ingin menghapus transaksi ini? Tindakan ini tidak dapat
+              dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+              className="border-slate-700 text-slate-300 hover:bg-slate-800"
+            >
+              Batal
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Hapus
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
